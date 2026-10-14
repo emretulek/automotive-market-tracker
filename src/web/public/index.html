@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automotive Market Tracker | Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-mark">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Automotive Market Tracker</h1>
+          <p class="subtitle">UK Inventory & Price Analytics</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-badge" id="targetBadge" title="Current Scrape Target (configured in config/targets.json)">
+          <span>🎯</span>
+          <span id="targetText">Target: Tesla</span>
+        </div>
+        <div class="status-badge" id="headlessBadge" title="Browser Headless Mode (from .env)">
+          <span>🖥️</span>
+          <span id="headlessText">Headless: new</span>
+        </div>
+        <div class="status-badge" id="cronBadge">
+          <span>⏰</span>
+          <span id="cronText">Auto-Cron: 03:00 Daily</span>
+        </div>
+        <div class="status-badge" id="proxyBadge">
+          <span>🛡️</span>
+          <span id="proxyText">Proxy: Direct</span>
+        </div>
+        <div class="status-badge" id="scraperStatus">
+          <span class="status-dot"></span>
+          <span id="statusText">System Ready</span>
+        </div>
+        <button id="runsBtn" class="btn-secondary" onclick="openRunsModal()" title="View Scrape Run Logs & Errors">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Run Logs
+        </button>
+        <button id="scrapeBtn" class="btn-primary" onclick="triggerScraper()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Run Scraper
+        </button>
+        <button id="stopBtn" class="btn-danger" style="display: none;" onclick="stopScraperAction()" title="Immediately abort active scraper job">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          </svg>
+          Stop Scraper
+        </button>
+      </div>
+    </header>
+
+    <!-- Key Metrics Cards (6 Comprehensive Stat Boxes) -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Active Inventory</span>
+          <span class="metric-icon">🚗</span>
+        </div>
+        <div class="metric-value" id="totalActive">-</div>
+        <div class="metric-meta text-muted">Currently active listings</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Sold / Delisted</span>
+          <span class="metric-icon">🏷️</span>
+        </div>
+        <div class="metric-value text-red" id="totalSold">0</div>
+        <div class="metric-meta text-muted" id="soldMeta">Tracked vehicles removed</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Average Valuation</span>
+          <span class="metric-icon">💷</span>
+        </div>
+        <div class="metric-value" id="avgPrice">-</div>
+        <div class="metric-meta text-muted">Across all active models</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">New (Last 7 Days)</span>
+          <span class="metric-icon">✨</span>
+        </div>
+        <div class="metric-value text-accent" id="new7d">-</div>
+        <div class="metric-meta text-muted" id="new24hMeta">- new in last 24h</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Price Drops</span>
+          <span class="metric-icon">📉</span>
+        </div>
+        <div class="metric-value text-green" id="priceDrops">-</div>
+        <div class="metric-meta text-muted" id="avgDropMeta">Avg discount: -</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Price Increases</span>
+          <span class="metric-icon">📈</span>
+        </div>
+        <div class="metric-value text-amber" id="priceIncreases">-</div>
+        <div class="metric-meta text-muted">Vehicles raised in price</div>
+      </div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="charts-row">
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Market Share by Model</h3>
+          <span class="card-badge">Live Inventory</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="modelChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Average Price by Model</h3>
+          <span class="card-badge">GBP (£)</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Inventory Section -->
+    <section class="inventory-section">
+      <div class="table-controls">
+        <div class="controls-left">
+          <h2>Market Listings</h2>
+          <span class="count-tag" id="listingCount">0 vehicles</span>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="controls-right">
+          <!-- Search input -->
+          <div class="search-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Search variant, trim, location..." oninput="debounceSearch()" />
+          </div>
+
+          <!-- Status Filter -->
+          <select id="statusFilter" onchange="resetAndLoadListings()">
+            <option value="all">Status: All</option>
+            <option value="active" selected>Status: Active Only</option>
+            <option value="sold">Status: Sold / Delisted</option>
+          </select>
+
+          <!-- Price Trend Filter -->
+          <select id="trendFilter" onchange="resetAndLoadListings()">
+            <option value="all">Price Trend: All</option>
+            <option value="dropped">📉 Price Dropped Only</option>
+            <option value="increased">📈 Price Increased Only</option>
+          </select>
+
+          <!-- Model Filter -->
+          <select id="modelFilter" onchange="resetAndLoadListings()">
+            <option value="all">Model: All</option>
+            <option value="Model 3">Model 3</option>
+            <option value="Model Y">Model Y</option>
+            <option value="Model S">Model S</option>
+            <option value="Model X">Model X</option>
+          </select>
+
+          <!-- Sort Filter -->
+          <select id="sortBy" onchange="resetAndLoadListings()">
+            <option value="date_desc">Latest Discovered</option>
+            <option value="price_asc">Price: Low to High</option>
+            <option value="price_desc">Price: High to Low</option>
+            <option value="price_drop">Biggest Price Drop</option>
+            <option value="mileage_asc">Lowest Mileage</option>
+            <option value="year_desc">Newest Year</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Listings Grid Container -->
+      <div class="listings-grid" id="listingsContainer">
+        <!-- Rendered dynamically via app.js -->
+      </div>
+
+      <!-- Pagination Controls -->
+      <div class="pagination-bar" id="paginationBar">
+        <div class="pagination-info" id="paginationInfo">Showing 1-12 of 44 listings</div>
+        <div class="pagination-buttons">
+          <button id="btnPrevPage" class="btn-page" onclick="changePage(-1)" disabled>
+            ← Previous
+          </button>
+          <span class="page-indicator" id="pageIndicator">Page 1 of 4</span>
+          <button id="btnNextPage" class="btn-page" onclick="changePage(1)">
+            Next →
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Vehicle Detail & Price History Modal -->
+  <div class="modal-backdrop" id="detailModal" onclick="closeModalOnBackdrop(event)">
+    <div class="modal-content">
+      <button class="modal-close-btn" onclick="closeModal()">✕</button>
+      <div id="modalBody">
+        <div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading vehicle data...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrape Runs & Activity Log Modal -->
+  <div class="modal-backdrop" id="runsModal" onclick="closeRunsModalOnBackdrop(event)">
+    <div class="modal-content modal-runs-content">
+      <button class="modal-close-btn" onclick="closeRunsModal()">✕</button>
+      <div class="runs-modal-header">
+        <div>
+          <h2 style="font-size: 18px; font-weight: 700; color: #fff;">📋 Scraper Activity & Run History</h2>
+          <p class="subtitle" style="font-size: 13px; margin-top: 4px;">Track live status, duration, processed listings, and error diagnostics</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary btn-sm" onclick="fetchAndRenderRuns()">🔄 Refresh</button>
+          <button class="btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);" onclick="clearRunsHistory()" title="Clear all past run logs and error records">🗑️ Clear Logs</button>
+        </div>
+      </div>
+      <div id="runsModalBody" style="margin-top: 14px; overflow-x: auto;">
+        <div style="padding: 30px; text-align: center; color: var(--text-muted);">Loading scrape history...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

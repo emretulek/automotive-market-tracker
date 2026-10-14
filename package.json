@@ -1,0 +1,31 @@
+{
+  "name": "automotive-market-tracker",
+  "version": "1.0.0",
+  "description": "Automotive market intelligence engine, price tracker, and analytics dashboard.",
+  "main": "src/web/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/web/server.js",
+    "scrape": "node src/scraper/index.js",
+    "dev:web": "node --watch src/web/server.js"
+  },
+  "keywords": [
+    "automotive",
+    "data-pipeline",
+    "market-intelligence",
+    "price-tracker",
+    "sqlite",
+    "analytics",
+    "dashboard"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ghost-cursor": "^1.4.2",
+    "node-cron": "^4.6.0",
+    "patchright": "^1.49.1"
+  }
+}

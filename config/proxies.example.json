@@ -1,0 +1,42 @@
+{
+  "enabled": true,
+  "concurrency": 4,
+  "rotationIntervalPages": 10,
+  "minMobileCooldownSeconds": 60,
+  "proxies": [
+    {
+      "id": "ipv6-gateway-example",
+      "name": "Rotating IPv6 Gateway",
+      "type": "ipv6_rotating",
+      "protocol": "http",
+      "host": "your-proxy-host.com",
+      "port": 61010,
+      "username": "your_username",
+      "password": "your_password",
+      "active": true
+    },
+    {
+      "id": "mobile-4g-example",
+      "name": "UK 4G Mobile Rotating Proxy",
+      "type": "mobile_rotating",
+      "protocol": "http",
+      "host": "mobile-proxy-host.com",
+      "port": 8048,
+      "username": "your_mobile_username",
+      "password": "your_mobile_password",
+      "changeIpUrl": "https://yourproxyprovider.com/api/reset.php?key=YOUR_RESET_KEY",
+      "active": false
+    },
+    {
+      "id": "residential-sticky-example",
+      "name": "UK Residential Sticky Proxy",
+      "type": "residential_sticky",
+      "protocol": "http",
+      "host": "residential-proxy-host.com",
+      "port": 7777,
+      "username": "your_residential_username",
+      "password": "your_residential_password",
+      "active": false
+    }
+  ]
+}
