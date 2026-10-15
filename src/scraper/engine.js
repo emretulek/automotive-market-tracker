@@ -14,7 +14,7 @@ export async function stopScraper() {
   if (activeBrowser) {
     try {
       await activeBrowser.close();
-    } catch (e) {}
+    } catch (e) { }
     activeBrowser = null;
   }
 }
@@ -34,8 +34,17 @@ export async function runScraper(options = {}) {
   const rawHeadless = options.headless !== undefined ? options.headless : (process.env.HEADLESS ?? 'false');
   const normHeadless = String(rawHeadless).trim().toLowerCase();
 
+  const REAL_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36';
+
   let isHeadless = false;
-  const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+  const launchArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-webrtc',
+    '--webrtc-ip-handling-policy=disable_non_proxied_udp',
+    '--enforce-webrtc-ip-permission-check',
+    `--user-agent=${REAL_USER_AGENT}`
+  ];
   let modeLabel = 'Headed (visible window)';
 
   if (normHeadless === 'new' || normHeadless === 'chrome-headless') {
@@ -111,7 +120,8 @@ export async function runScraper(options = {}) {
     console.log(`🌐 Visiting AutoTrader to establish session & discover models for "${make}"...`);
     const sessionContext = await browser.newContext({
       viewport: { width: 1440, height: 900 },
-      locale: 'en-GB'
+      locale: 'en-GB',
+      userAgent: REAL_USER_AGENT
     });
     const sessionPage = await sessionContext.newPage();
     await initHumanMouse(sessionPage);
@@ -122,7 +132,7 @@ export async function runScraper(options = {}) {
     } catch (sErr) {
       console.warn('⚠️ Model discovery notice:', sErr.message);
     } finally {
-      await sessionContext.close().catch(() => {});
+      await sessionContext.close().catch(() => { });
     }
 
     // 2. Build Shared Multi-Model Page Queue
@@ -145,21 +155,30 @@ export async function runScraper(options = {}) {
 
     let completedCleanly = true;
 
-    // Only rotating gateway proxies (like LivaProxy IPv6) need context teardown per page to force new IP
-    const renewContextPerPage = proxyInfo?.details?.type === 'ipv6_rotating';
+    // Batch rotation interval (default: 5 pages per IP/context session)
+    const rotationInterval = proxyManager.config?.rotationIntervalPages || 5;
+    const isRotatingGateway = proxyInfo?.details?.type === 'ipv6_rotating';
 
     async function runWorker(workerId) {
-      let persistentContext = null;
-      let persistentPage = null;
+      let context = null;
+      let page = null;
+      let pagesInCurrentBatch = 0;
 
-      if (!renewContextPerPage) {
-        persistentContext = await browser.newContext({
+      async function createWorkerContext() {
+        if (context) {
+          await context.close().catch(() => { });
+        }
+        context = await browser.newContext({
           viewport: { width: 1366, height: 768 },
-          locale: 'en-GB'
+          locale: 'en-GB',
+          userAgent: REAL_USER_AGENT
         });
-        persistentPage = await persistentContext.newPage();
-        await initHumanMouse(persistentPage);
+        page = await context.newPage();
+        await initHumanMouse(page);
+        pagesInCurrentBatch = 0;
       }
+
+      await createWorkerContext();
 
       try {
         while (queue.length > 0) {
@@ -173,17 +192,9 @@ export async function runScraper(options = {}) {
 
           const { make, model, pageNum, totalPages } = task;
 
-          let context = persistentContext;
-          let page = persistentPage;
-
-          // Fresh context per page only if using rotating gateway proxy
-          if (renewContextPerPage) {
-            context = await browser.newContext({
-              viewport: { width: 1366, height: 768 },
-              locale: 'en-GB'
-            });
-            page = await context.newPage();
-            await initHumanMouse(page);
+          // Ensure page and context are healthy
+          if (!page || page.isClosed()) {
+            await createWorkerContext();
           }
 
           try {
@@ -197,17 +208,21 @@ export async function runScraper(options = {}) {
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
               if (activeAbort) break;
 
+              if (!page || page.isClosed()) {
+                await createWorkerContext();
+              }
+
               try {
                 if (attempt === 1) {
-                  const ipNote = renewContextPerPage ? ' (Fresh IP)' : '';
-                  console.log(`📄 [Worker ${workerId} | ${model} | Page ${pageNum}/${totalPages}] Fetching${ipNote}...`);
+                  const batchNote = isRotatingGateway ? ` (Batch ${pagesInCurrentBatch + 1}/${rotationInterval})` : '';
+                  console.log(`📄 [Worker ${workerId} | ${model} | Page ${pageNum}/${totalPages}] Fetching${batchNote}...`);
                 } else {
                   console.log(`🔄 [Worker ${workerId} | ${model} | Page ${pageNum}] (Attempt ${attempt}/${maxRetries}) Retrying...`);
                   await page.waitForTimeout(3000);
                 }
 
                 await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 50000 });
-                
+
                 const cfSolvedInitial = await solveCloudflareIfPresent(page);
                 if (cfSolvedInitial) {
                   console.log(`🔄 [Worker ${workerId}] Cloudflare solved on load! Giving extra time for listings to render...`);
@@ -236,12 +251,12 @@ export async function runScraper(options = {}) {
                     if (!refreshClicked) {
                       refreshClicked = true;
                       console.log(`🔄 [Worker ${workerId} | ${model} | Page ${pageNum}] AutoTrader error detected ("Refresh page"). Clicking button...`);
-                      await errorBtn.click().catch(() => {});
+                      await errorBtn.click().catch(() => { });
                       await page.waitForTimeout(3000);
                       continue;
                     } else {
                       console.log(`🔄 [Worker ${workerId} | ${model} | Page ${pageNum}] Error persists after button click. Reloading page...`);
-                      await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+                      await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => { });
                       await page.waitForTimeout(2000);
                       continue;
                     }
@@ -261,12 +276,12 @@ export async function runScraper(options = {}) {
                     const headingText = headingEl ? headingEl.innerText : '';
                     const mainEl = document.querySelector('main') || document.body;
                     const mainText = mainEl ? mainEl.innerText : '';
-                    
+
                     const isMax = mainText.includes('Maximum displayed results reached');
                     const hasZero = /0\s+(results|vehicles)\b/i.test(headingText) ||
-                                    headingText.includes('No results') ||
-                                    mainText.includes('There are no matching results') ||
-                                    mainText.includes('No results found for');
+                      headingText.includes('No results') ||
+                      mainText.includes('There are no matching results') ||
+                      mainText.includes('No results found for');
                     return { isMax, isZero: hasZero };
                   }).catch(() => ({ isMax: false, isZero: false }));
 
@@ -337,7 +352,7 @@ export async function runScraper(options = {}) {
               } catch (err) {
                 console.warn(`⚠️ [Worker ${workerId} | ${model} | Page ${pageNum}] Attempt ${attempt} failed: ${err.message}`);
                 if (attempt === maxRetries) {
-                  await page.screenshot({ path: `screenshots/error_worker${workerId}_page${pageNum}.png` }).catch(() => {});
+                  await page.screenshot({ path: `screenshots/error_worker${workerId}_page${pageNum}.png` }).catch(() => { });
                 }
               }
             }
@@ -380,23 +395,28 @@ export async function runScraper(options = {}) {
 
             console.log(`✅ [Worker ${workerId} | ${model} | Page ${pageNum}] Done. Found ${rawCards.length} cars (${newOnPage} new). [Queue left: ${queue.length} pages]`);
 
+            pagesInCurrentBatch++;
+
+            // IPv6 Rotating Gateway: Cycle context every N pages to obtain fresh IPv6
+            if (isRotatingGateway && pagesInCurrentBatch >= rotationInterval) {
+              console.log(`\n🔄 [Worker ${workerId}] Batch of ${pagesInCurrentBatch} pages completed. Renewing context for fresh IPv6...`);
+              await createWorkerContext();
+            }
+
             // Mobile proxy rotation check if running single worker with mobile
-            const rotationInterval = proxyManager.config?.rotationIntervalPages || 10;
             if (proxyInfo?.details?.type === 'mobile_rotating' && (pageNum % rotationInterval === 0)) {
               console.log(`\n📦 [Batch Completed] ${pageNum} pages scraped. Executing mobile proxy rotation with cooldown check...`);
               await proxyManager.rotateMobileIp(proxyInfo.details);
             }
           } finally {
-            if (renewContextPerPage && context) {
-              await context.close().catch(() => {});
-            }
+            // Keep context alive for next page in batch
           }
 
           await new Promise(r => setTimeout(r, Math.floor(Math.random() * 500) + 500));
         }
       } finally {
-        if (persistentContext) {
-          await persistentContext.close().catch(() => {});
+        if (context) {
+          await context.close().catch(() => { });
         }
       }
     }
@@ -417,12 +437,20 @@ export async function runScraper(options = {}) {
       const activeListings = dbOps.getActiveListings(make);
       const candidatesToVerify = activeListings.filter(car => !uniqueSeenIds.has(car.id));
 
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📋 [İlan Kontrol Ön Raporu]`);
+      console.log(`   • Veritabanındaki kayıtlı aktif ilan sayısı: ${activeListings.length}`);
+      console.log(`   • Bu taramada arama sayfalarında bulunan ilan sayısı: ${uniqueSeenIds.size}`);
+      console.log(`   • Sayfalarda bulunamayan ve kontrol edilecek ilan sayısı: ${candidatesToVerify.length}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (candidatesToVerify.length > 0) {
-        console.log(`\n🔍 [Direct Verification] Checking ${candidatesToVerify.length} unscraped active cars directly via in-page fetch...`);
+        console.log(`\n🔍 [Direct Verification] Arama sayfalarında çıkmayan ${candidatesToVerify.length} ilan tek tek kontrol ediliyor (satıldı/kaldırıldı mı?)...`);
 
         const verifyContext = await browser.newContext({
           viewport: { width: 1366, height: 768 },
-          locale: 'en-GB'
+          locale: 'en-GB',
+          userAgent: REAL_USER_AGENT
         });
         const verifyPage = await verifyContext.newPage();
 
@@ -444,14 +472,20 @@ export async function runScraper(options = {}) {
               return Promise.all(ids.map(async (id) => {
                 try {
                   const url = `https://www.autotrader.co.uk/car-details/${id}`;
-                  const res = await fetch(url);
+                  const controller = new AbortController();
+                  const timer = setTimeout(() => controller.abort(), 8000);
+                  const res = await fetch(url, { signal: controller.signal });
+                  clearTimeout(timer);
                   const isLive = !res.redirected && res.url.includes(id);
                   return { id, isLive, finalUrl: res.url, redirected: res.redirected };
                 } catch (e) {
                   return { id, isLive: true, error: e.message }; // safety fallback
                 }
               }));
-            }, chunkIds);
+            }, chunkIds).catch(err => {
+              console.warn('⚠️ Batch evaluate timeout/error:', err.message);
+              return chunkIds.map(id => ({ id, isLive: true }));
+            });
 
             for (const res of results) {
               if (res.isLive) {
@@ -460,12 +494,17 @@ export async function runScraper(options = {}) {
               } else {
                 dbOps.markListingSold(res.id);
                 confirmedSold++;
-                console.log(`🏷️ [Car ${res.id}] Confirmed SOLD/DELISTED (Redirected to: ${res.finalUrl}). Marked as Sold.`);
+                console.log(`🏷️ [Car ${res.id}] Confirmed SOLD/DELISTED (Redirected). Marked as Sold.`);
               }
             }
 
+            const processedCount = Math.min(i + chunkSize, candidatesToVerify.length);
+            if (processedCount % 15 === 0 || processedCount === candidatesToVerify.length) {
+              console.log(`⏳ [Direct Verification] İlerleme: ${processedCount}/${candidatesToVerify.length} (Aktif: ${confirmedActive}, Satılan: ${confirmedSold})`);
+            }
+
             if (i + chunkSize < candidatesToVerify.length) {
-              await verifyPage.waitForTimeout(400); // 400ms human pause between small batches
+              await verifyPage.waitForTimeout(300);
             }
           }
 
@@ -474,7 +513,7 @@ export async function runScraper(options = {}) {
         } catch (vErr) {
           console.warn('⚠️ Verification step notice:', vErr.message);
         } finally {
-          await verifyContext.close().catch(() => {});
+          await verifyContext.close().catch(() => { });
         }
       } else {
         console.log('\n✨ All active database listings were seen on search pages. No delist verification needed.');
@@ -505,7 +544,7 @@ export async function runScraper(options = {}) {
     dbOps.finishScrapeRun(runId, stats);
   } finally {
     if (browser) {
-      await browser.close().catch(() => {});
+      await browser.close().catch(() => { });
     }
     activeBrowser = null;
   }

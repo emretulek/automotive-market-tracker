@@ -33,13 +33,13 @@ async function loadOverview() {
     }
 
     if (cron) {
-      document.getElementById('cronText').textContent = cron.enabled 
-        ? `Cron: ${cron.schedule}` 
+      document.getElementById('cronText').textContent = cron.enabled
+        ? `Cron: ${cron.schedule}`
         : 'Cron: Standby';
     }
     if (proxy) {
-      document.getElementById('proxyText').textContent = proxy.enabled 
-        ? `Proxy: ${proxy.current}` 
+      document.getElementById('proxyText').textContent = proxy.enabled
+        ? `Proxy: ${proxy.current}`
         : 'Proxy: Direct';
     }
 
@@ -49,10 +49,10 @@ async function loadOverview() {
     document.getElementById('avgPrice').textContent = `£${data.avgPrice.toLocaleString()}`;
     document.getElementById('new7d').textContent = data.newLast7d.toLocaleString();
     document.getElementById('new24hMeta').textContent = `${data.newLast24h.toLocaleString()} new in last 24h`;
-    
+
     document.getElementById('priceDrops').textContent = data.priceDropsTotal.toLocaleString();
-    document.getElementById('avgDropMeta').textContent = data.avgPriceDrop > 0 
-      ? `Avg discount: -£${data.avgPriceDrop.toLocaleString()}` 
+    document.getElementById('avgDropMeta').textContent = data.avgPriceDrop > 0
+      ? `Avg discount: -£${data.avgPriceDrop.toLocaleString()}`
       : 'No active reductions';
 
     document.getElementById('priceIncreases').textContent = data.priceIncreasesTotal.toLocaleString();
@@ -176,7 +176,7 @@ async function loadListings() {
     const endIdx = Math.min(currentPage * pageSize, totalCount);
     document.getElementById('paginationInfo').textContent = `Showing ${startIdx}-${endIdx} of ${totalCount} listings`;
     document.getElementById('pageIndicator').textContent = `Page ${currentPage} of ${totalPages || 1}`;
-    
+
     document.getElementById('btnPrevPage').disabled = currentPage <= 1;
     document.getElementById('btnNextPage').disabled = currentPage >= totalPages;
 
@@ -197,8 +197,8 @@ async function loadListings() {
       }
 
       const prevPrice = (car.price_change !== 0) ? (car.price - car.price_change) : car.original_price;
-      const origPriceHtml = (car.price_change !== 0 && prevPrice && prevPrice !== car.price) 
-        ? `<span class="car-orig-price">£${prevPrice.toLocaleString()}</span>` 
+      const origPriceHtml = (car.price_change !== 0 && prevPrice && prevPrice !== car.price)
+        ? `<span class="car-orig-price">£${prevPrice.toLocaleString()}</span>`
         : '';
 
       return `
@@ -273,7 +273,7 @@ async function openDetailModal(id) {
 
     const latestDiff = car.price_change || 0;
     const overallDiff = (car.price && car.original_price) ? (car.price - car.original_price) : 0;
-    
+
     let diffSign = '';
     if (latestDiff < 0) {
       diffSign = `<span style="color: #10b981; font-weight: 600;">📉 -£${Math.abs(latestDiff).toLocaleString()} latest drop</span>`;
@@ -293,8 +293,8 @@ async function openDetailModal(id) {
 
     // Build History Table rows
     const historyRows = (car.price_history || []).map(h => {
-      const diffLabel = h.difference < 0 
-        ? `<span style="color: #10b981;">-£${Math.abs(h.difference).toLocaleString()}</span>` 
+      const diffLabel = h.difference < 0
+        ? `<span style="color: #10b981;">-£${Math.abs(h.difference).toLocaleString()}</span>`
         : `<span style="color: #f59e0b;">+£${h.difference.toLocaleString()}</span>`;
       return `
         <tr>
@@ -471,7 +471,7 @@ async function checkScraperStatus() {
         loadListings();
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function updateScraperBadge(isScraping) {
@@ -582,7 +582,7 @@ async function fetchAndRenderRuns() {
             <th>Duration</th>
             <th>Found</th>
             <th>New</th>
-            <th>Drops</th>
+            <th>Changes</th>
             <th>Error / Diagnostics</th>
           </tr>
         </thead>
@@ -605,7 +605,7 @@ async function fetchAndRenderRuns() {
       }
 
       const statusBadge = `<span class="run-badge ${run.status}">${run.status}</span>`;
-      const errorContent = run.error_message 
+      const errorContent = run.error_message
         ? `<span style="color: #ef4444; font-family: monospace; font-size: 11px;" title="${escapeHtml(run.error_message)}">${escapeHtml(run.error_message.slice(0, 50))}${run.error_message.length > 50 ? '...' : ''}</span>`
         : '<span style="color: var(--text-muted);">-</span>';
 
